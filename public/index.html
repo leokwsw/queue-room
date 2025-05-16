@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="initial-scale=1, user-scalable=no" />
+  <title>排隊系統</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link
+    href="https://fonts.googleapis.com/css?family=Noto+Sans+TC"
+    rel="stylesheet"
+  />
+  <meta name="msapplication-TileColor" content="#fedd00" />
+  <meta name="theme-color" content="#fedd00" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ua-parser-js@0/dist/ua-parser.min.js"></script>
+
+  <script>
+    // Env config
+    let API_URL = 'http://localhost:3000';
+    let WEB_URL = 'https://www.google.com';
+
+    // Core
+    var backToUrl = '';
+    var queue_id = '';
+    var cid = '';
+    var stopTimer = false;
+    var accessToken = '';
+
+    // 獲取 WEB_URL
+    fetch(API_URL + '/web-url')
+      .then(res => res.json())
+      .then(data => {
+        if (data.webUrl) {
+          WEB_URL = data.webUrl;
+        }
+      })
+      .catch(err => console.error('Error fetching WEB_URL:', err));
+
+    function getQueryByName(name, url) {
+      if (!url) url = window.location.href;
+      name = name.replace(/[\[\]]/g, '\\$&');
+      let regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
+        results = regex.exec(url);
+      if (!results) return null;
+      if (!results[2]) return '';
+      return decodeURIComponent(results[2].replace(/\+/g, ' '));
+    }
+
+    function setCookie(cname, cvalue, ttl = null) {
+      // Default 30 days expire
+      ttl =
+        ttl !== undefined && ttl !== null ? ttl : 30 * 24 * 60 * 60;
+      var d = new Date();
+      d.setTime(d.getTime() + ttl * 1000);
+      var expires = 'expires=' + d.toUTCString();
+
+      // Set cookie
+      window.document.cookie =
+        cname + '=' + cvalue + ';' + expires + ';path=/';
+    }
+
+    function getCookie(cname) {
+      let name = cname + '=';
+      let decodedCookie = decodeURIComponent(window.document.cookie);
+      let ca = decodedCookie.split(';');
+      for (let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) === ' ') {
+          c = c.substring(1);
+        }
+        if (c.indexOf(name) === 0) {
+          return c.substring(name.length, c.length);
+        }
+      }
+      return '';
+    }
+
+    function showElement(eleId) {
+      let element = window.document.getElementById(eleId);
+      element.className = element.className.replace(
+        /\bhidden\b/g,
+        '',
+      );
+      element.className = element.className.trim();
+    }
+
+    function hideElement(eleId) {
+      let element = window.document.getElementById(eleId);
+      if (element.className.indexOf('hidden') < 0) {
+        element.className = element.className.trim();
+        element.className += ' hidden';
+      }
+    }
+
+    function showPopupMyTurn(remainTime) {
+      startTimer(remainTime);
+      showElement('popup-my-turn');
+      hideElement('popup-expired');
+      showElement('popup-bg');
+      document.title = '!!! [輪到你喇] !!!';
+    }
+
+    function showPopupExpired() {
+      hideElement('popup-my-turn');
+      showElement('popup-expired');
+      showElement('popup-bg');
+      document.title = '!!! [輪到你喇] !!!';
+    }
+
+    function goToWebSite() {
+      let queue_id = getQueryByName('queue_id') || getCookie('queue_id');
+      extendOnline(queue_id, function() {
+        window.location =
+          WEB_URL +
+          (backToUrl.charAt(0) !== '/' ? '/' : '') +
+          backToUrl +
+          (backToUrl.indexOf('?') !== -1 ? '&' : '?') +
+          'queue_id=' +
+          queue_id;
+      });
+    }
+
+    function queueAgain() {
+      window.location = WEB_URL + backToUrl;
+    }
+
+    function extendOnline(queue_id, completedCallback) {
+      stopTimer = true;
+      fetch(API_URL + '/extend-online?queueId=' + queue_id)
+        .then((res) => res.json())
+        .then((json) => {
+          console.debug(json);
+          completedCallback();
+        })
+        .catch((e) => {
+          console.error('Error:', e);
+          completedCallback();
+        });
+    }
+
+    function startTimer(duration) {
+      let expireTimestamp = Math.floor(Date.now() / 1000) + duration;
+
+      let timer, minutes, seconds;
+      setInterval(function() {
+        if (stopTimer !== true) {
+          timer = expireTimestamp - Math.floor(Date.now() / 1000);
+          minutes = parseInt(timer / 60, 10);
+          seconds = parseInt(timer % 60, 10);
+          minutes = minutes < 10 ? '0' + minutes : minutes;
+          seconds = seconds < 10 ? '0' + seconds : seconds;
+          window.document.getElementById(
+            'expiry-timer',
+          ).textContent = '(' + minutes + ':' + seconds + ')';
+          if (timer < 0) {
+            showPopupExpired();
+          }
+        }
+      }, 1000);
+    }
+
+    window.onload = () => {
+      // Get queue_id
+      let qidQuery = getQueryByName('queue_id');
+      if (qidQuery) {
+        setCookie('queue_id', qidQuery);
+      }
+      queue_id = qidQuery || getCookie('queue_id');
+      accessToken = getCookie('accessToken');
+
+      // Get data team client ID (cid)
+      try {
+        let cidQuery = getQueryByName('cid');
+        if (cidQuery) {
+          setCookie('cid', cidQuery, 5 * 365 * 24 * 60 * 60);
+        }
+        cid = cidQuery || getCookie('cid');
+      } catch (e) {
+        console.error(e);
+      }
+
+      // Get backToUrl
+      try {
+        let backToUrlQuery = getQueryByName('backToUrl');
+        if (backToUrlQuery) {
+          setCookie('backToUrl', backToUrl);
+        }
+        backToUrl = backToUrlQuery || getCookie('backToUrl');
+        backToUrl = decodeURIComponent(backToUrl);
+
+        // Remove "queue_id" from "backToUrl"
+        backToUrl = backToUrl.replace(
+          /([?&])(queue_id=)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/,
+          '',
+        );
+      } catch (e) {
+        console.error(e);
+      }
+
+      // Call API to check the queue
+      setTimeout(() => {
+        // Call API loop
+        let isQueuing = true;
+        let currentPosition = 0;
+        let initialPosition = 0;
+        setInterval(
+          (function checkQueue() {
+            if (isQueuing) {
+              fetch(API_URL + '/current-position', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  queueId: queue_id,
+                  accessToken: accessToken,
+                }),
+              }) // api url here
+                .then((res) => res.json())
+                .then((json) => {
+                  console.debug(json);
+                  queue_id =
+                    json.queueId !== undefined
+                      ? json.queueId
+                      : queue_id;
+                  setCookie('queue_id', queue_id);
+                  accessToken =
+                    json.accessToken !== undefined
+                      ? json.accessToken
+                      : accessToken;
+                  setCookie('accessToken', accessToken);
+                  // Position and progress bar
+                  isWaiting =
+                    json.waiting !== undefined
+                      ? json.waiting
+                      : true;
+                  currentPosition =
+                    json.position !== undefined
+                      ? json.position
+                      : 0;
+                  initialPosition =
+                    json.initialPosition !== undefined
+                      ? json.initialPosition
+                      : 0;
+                  currentPosition =
+                    currentPosition <= 0
+                      ? 1
+                      : currentPosition;
+                  initialPosition =
+                    initialPosition < 0
+                      ? 0
+                      : initialPosition;
+                  progress = Math.round(
+                    ((initialPosition -
+                        currentPosition +
+                        1) /
+                      (initialPosition + 1)) *
+                    100,
+                  );
+                  console.log(
+                    'currentPosition: ' +
+                    currentPosition,
+                  );
+                  console.log(
+                    'initalPosition: ' + initialPosition,
+                  );
+                  console.log('progress: ' + progress);
+                  progress = progress < 0 ? 0 : progress;
+                  window.document.getElementById(
+                    'users-ahead-number-tc',
+                  ).innerHTML = currentPosition;
+                  window.document.getElementById(
+                    'progress',
+                  ).style.width = progress + '%';
+
+                  document.title =
+                    '[仲有 ' +
+                    currentPosition +
+                    ' 人到你喇]';
+
+                  // Reserve time
+                  if (
+                    json.reserveTime !== undefined
+                  ) {
+                    var reserveTime = Math.floor(
+                      json.reserveTime / 60,
+                    );
+                    reserveTime =
+                      reserveTime <= 0
+                        ? 10
+                        : reserveTime;
+                    var expireDom =
+                      document.getElementsByClassName(
+                        'reserveTime',
+                      );
+                    for (i in expireDom) {
+                      expireDom[i].innerHTML =
+                        reserveTime;
+                    }
+                  }
+
+                  // Can online
+                  if (!isWaiting) {
+                    // Stop ajax
+                    isQueuing = false;
+
+                    const remainTime =
+                      json.remainTime !== undefined
+                        ? json.remainTime
+                        : 0;
+
+                    if (remainTime <= 0) {
+                      // show expired popup, update title
+                      showPopupExpired();
+                    } else {
+                      // show my-turn popup and counter, update title
+                      showPopupMyTurn(remainTime);
+                    }
+                  }
+                })
+                .catch((e) => {
+                  console.error('Error:', e);
+                });
+            }
+            return checkQueue;
+          })(),
+          10000,
+        );
+      }, 0);
+
+      const images = [
+        'queue_bg_img.png',
+        'queue_bg_img_2.png',
+        'queue_bg_img_3.png',
+        'queue_bg_img_4.png',
+        'queue_bg_img_5.png',
+      ];
+      const randomImage = images[Math.floor(Math.random() * images.length)];
+
+      $('#queue-img').html(`<img src="/images/${randomImage}" alt="logo" width="100%" />`);
+    };
+  </script>
+  <style>
+    .background {
+      background: #fafafa;
+    }
+
+    .bottom {
+      position: absolute;
+      bottom: 0;
+    }
+
+    .box {
+      padding-top: 22px;
+    }
+
+    .desc-tc {
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+<div class="background">
+  <div class="logo" id="logo">
+    <img alt="logo" src="/images/logo.png" width="87" />
+  </div>
+  <div class="box">唔好意思，<br />而家好多人排緊隊...</div>
+  <div class="queue">
+    <div class="users-ahead">
+      <div class="users-ahead-title">
+        <div class="users-ahead-title-tc">
+          仲有
+          <span
+            class="users-ahead-number"
+            id="users-ahead-number-tc"
+          ></span>
+          個人輪到你喇
+        </div>
+      </div>
+    </div>
+    <div class="queue-bar-parent">
+      <div class="queue-bar animate">
+        <span class="progress-default"></span>
+        <div class="progress-container">
+          <span class="progress" id="progress"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="desc">
+    <p class="desc-tc">
+      伺服器目前只能夠處理部分訂單。<br />
+      頁面會自動更新，<br />
+      待人流稍減，你就可以入去喇。<br />
+      <br />
+      提提你：你個位置會保留
+      <span class="reserveTime">10</span> 分鐘，<br />
+      過時就讓俾其他人，<br />
+      要重新排隊喇，多謝諒解。
+    </p>
+  </div>
+  <div class="bottom" id="queue-img"></div>
+</div>
+
+
+<div class="popup-bg hidden" id="popup-bg">
+  <div class="popup my-turn" id="popup-my-turn">
+    <div class="message">
+      <p class="message-tc">
+        輪到你喇，請按「進入」即入去！你個位置會保留
+        <span class="reserveTime">10</span>
+        分鐘，過時就讓俾其他人，要重新排隊喇，多謝諒解。
+      </p>
+    </div>
+    <div class="popup-bottom">
+      <div class="timer"><span id="expiry-timer"></span></div>
+      <div class="btn-text btn-text-tc" onclick="goToWebSite()">
+        <span>進入</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="popup expired" id="popup-expired">
+    <div class="message">
+      <p class="message-tc">
+        唔好意思，本來已經輪到你入去，但因為你閒置超過
+        <span class="reserveTime">10</span>
+        分鐘，個位已讓咗俾其他人，要重新排隊喇。
+      </p>
+    </div>
+    <div class="popup-bottom">
+      <div class="timer"></div>
+      <div class="btn-text btn-text-tc" onclick="queueAgain()">
+        <span>重新排隊</span>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

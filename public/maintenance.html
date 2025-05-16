@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="initial-scale=1, user-scalable=no" />
+  <title>排隊系統 - 維護中</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link
+    href="https://fonts.googleapis.com/css?family=Noto+Sans+TC"
+    rel="stylesheet"
+  />
+  <meta name="msapplication-TileColor" content="#fedd00" />
+  <meta name="theme-color" content="#fedd00" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ua-parser-js@0/dist/ua-parser.min.js"></script>
+  <script>
+    // Env config
+    let API_URL = 'http://localhost:3000';
+    let WEB_URL = 'https://www.neigbuy.com';
+
+
+    // Core
+    var backToUrl = '';
+    var queue_id = '';
+    var cid = '';
+    var stopTimer = false;
+
+    function getQueryByName(name, url) {
+      if (!url) url = window.location.href;
+      name = name.replace(/[\[\]]/g, '\\$&');
+      let regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
+        results = regex.exec(url);
+      if (!results) return null;
+      if (!results[2]) return '';
+      return decodeURIComponent(results[2].replace(/\+/g, ' '));
+    }
+
+    function setCookie(cname, cvalue, ttl = null) {
+      // Default 30 days expire
+      ttl =
+        ttl !== undefined && ttl !== null ? ttl : 30 * 24 * 60 * 60;
+      var d = new Date();
+      d.setTime(d.getTime() + ttl * 1000);
+      var expires = 'expires=' + d.toUTCString();
+
+      // Set cookie
+      window.document.cookie =
+        cname + '=' + cvalue + ';' + expires + ';path=/';
+    }
+
+    function getCookie(cname) {
+      let name = cname + '=';
+      let decodedCookie = decodeURIComponent(window.document.cookie);
+      let ca = decodedCookie.split(';');
+      for (let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) === ' ') {
+          c = c.substring(1);
+        }
+        if (c.indexOf(name) === 0) {
+          return c.substring(name.length, c.length);
+        }
+      }
+      return '';
+    }
+
+    function goToWebSite() {
+      window.location =
+        WEB_URL +
+        (backToUrl.charAt(0) !== '/' ? '/' : '') +
+        backToUrl +
+        (backToUrl.indexOf('?') !== -1 ? '&' : '?');
+    }
+
+    function reload() {
+      window.location.reload();
+    }
+
+    window.onload = () => {
+      // Get queue_id
+      let qidQuery = getQueryByName('queue_id');
+      if (qidQuery) {
+        setCookie('queue_id', qidQuery);
+      }
+      queue_id = qidQuery || getCookie('queue_id');
+
+      // Get backToUrl
+      try {
+        let backToUrlQuery = getQueryByName('backToUrl');
+        if (backToUrlQuery) {
+          setCookie('backToUrl', backToUrl);
+        }
+        backToUrl = backToUrlQuery || getCookie('backToUrl');
+        backToUrl = decodeURIComponent(backToUrl);
+
+        // Remove "queue_id" from "backToUrl"
+        backToUrl = backToUrl.replace(
+          /([?&])(queue_id=)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/,
+          '',
+        );
+      } catch (e) {
+        console.error(e);
+      }
+
+      // Call API to check the queue
+      setTimeout(() => {
+        // Call API loop
+        let isMaintance = true;
+
+        setInterval(
+          (function checkQueue() {
+            if (isMaintance) {
+              fetch(API_URL + '/check-maintenance') // api url here
+                .then((res) => res.json())
+                .then((json) => {
+                  // Position and progress bar
+                  isMaintance =
+                    json.maintenance !== undefined
+                      ? json.maintenance
+                      : true;
+                  if (json.reopenTime !== undefined) {
+                    var maintenanceDateDom =
+                      document.getElementById(
+                        'resume_time',
+                      );
+                    console.log(maintenanceDateDom);
+                    if (maintenanceDateDom) {
+                      console.log(12);
+                      maintenanceDateDom.innerText =
+                        json.reopenTime;
+                    }
+                  }
+
+                  // Can online
+                  if (!isMaintance) {
+                    // goToWebSite();
+                  }
+                })
+                .catch((e) => {
+                  console.error('Error:', e);
+                });
+            }
+            return checkQueue;
+          })(),
+          30000,
+        );
+      }, 0);
+    };
+  </script>
+  <style>
+    .background {
+      background: #fafafa url('images/maintenance_bg_image.png') center/100%;
+    }
+
+    .desc {
+      margin-top: 16px;
+    }
+
+    .bottom {
+      margin-top: 124px;
+      text-align: center;
+    }
+
+    .btn-reload {
+      font-family: Noto Sans CJK TC;
+      font-size: 16px;
+      line-height: 22px;
+      color: #00a3e0;
+      cursor: pointer;
+    }
+
+    .box {
+      padding-top: 80px;
+    }
+
+    .desc-tc {
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+<div class="background">
+  <div class="box">
+    <img
+      alt="maintenance background image"
+      src="/images/maintenance_image.png"
+      width="348"
+    /><br /><br />
+    維護中
+    <!-- 網站搶修中 -->
+  </div>
+  <div class="desc">
+    <p class="desc-tc">
+      預計於 <span class="date" id="resume_time"></span> 恢復服務。<br />請耐心等候，<br />不便之處，敬請原諒。
+    </p>
+  </div>
+
+  <div class="bottom">
+    <div class="btn-reload" onclick="reload()">重新整理</div>
+  </div>
+</div>
+</body>
+</html>

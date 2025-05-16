@@ -1,0 +1,12 @@
+{
+  "main": {
+    "onlineMaxIdleTime": 120,
+    "extendOnlineTime": 60,
+    "onboardMaxIdleTime": 80,
+    "extendWaitingTime": 3600,
+    "onlineLimit": 100,
+    "isMaintenance": false,
+    "maintenanceResumeTime": "",
+    "trustedIp": ["127.0.0.1"]
+  }
+}
