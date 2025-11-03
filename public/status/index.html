@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="utf-8" />
+  <title>Waiting Room Status</title>
+
+  <link
+    rel="stylesheet"
+    href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css"
+  />
+  <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
+  <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+  <script src="./zingchart.min.js"></script>
+  <style>
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin-bottom: 0px;
+    }
+
+    #myChart {
+      width: calc(100% - 40px - 15px);
+      height: 300px;
+    }
+
+    #tabs {
+      width: calc(100% - 20px);
+      height: calc(100% - 350px);
+      overflow-y: auto;
+    }
+
+    table {
+      font-size: 10px;
+      font-family: Arial, Helvetica, sans-serif;
+      border-collapse: collapse;
+      border: 1px solid #ccc;
+    }
+
+    td,
+    th {
+      word-break: break-all;
+      border: 1px solid #ccc;
+      padding: 0 4px;
+    }
+
+    td.single-line,
+    th.single-line {
+      word-break: keep-all;
+    }
+
+    td.center {
+      text-align: center;
+    }
+
+    .ui-tabs-panel {
+      padding: 1px !important;
+    }
+  </style>
+</head>
+
+<body>
+<div id="result"></div>
+<div id="myChart"></div>
+<script>
+  $(function() {
+    $('#tabs').tabs();
+    reload();
+    setInterval(reload, 10000);
+  });
+
+  function reload() {
+    $.get(
+      'http://localhost:3000/status-api',
+      function(result) {
+        const stats = result.summary;
+        $('#result').html(JSON.stringify(stats));
+        render(
+          stats.onlineHardLimit,
+          stats.onlineSoftLimit,
+          stats.onlineCount,
+          stats.onboardCount,
+          stats.waitingCount,
+        );
+
+        // Get list
+        var onlineList =
+          result.online === undefined ? [] : result.online;
+        var stagingList =
+          result.onboard === undefined ? [] : result.onboard;
+        var waitingList =
+          result.waiting === undefined ? [] : result.waiting;
+
+        // Sort list by expire ASC
+        onlineList.sort(compare);
+        stagingList.sort(compare);
+        waitingList.sort(compare);
+
+        function compare(a, b) {
+          if (a.createdAt < b.createdAt) return -1;
+          if (a.createdAt > b.createdAt) return 1;
+          return 0;
+        }
+
+        // Render table
+        $('#onlineList').html(
+          createTable(onlineList, [
+            'queueId',
+            'userAgent',
+            'ip',
+            'createdAt',
+          ]),
+        );
+        $('#stagingList').html(
+          createTable(stagingList, [
+            'queueId',
+            'userAgent',
+            'ip',
+            'createdAt',
+            'expiryAt',
+          ]),
+        );
+        $('#waitingList').html(
+          createTable(waitingList, [
+            'queueId',
+            'userAgent',
+            'ip',
+            'createdAt',
+          ]),
+        );
+      },
+    );
+  }
+
+  function render(
+    onlineHardLimit,
+    onlineSoftLimit,
+    onlineCount,
+    onboardCount,
+    waitingCount,
+  ) {
+    var myConfig = {
+      type: 'hbar',
+      plot: {
+        stacked: true,
+        stackType: 'normal',
+      },
+      legend: {
+        draggable: false,
+      },
+      scaleX: {
+        labels: ['Online', 'Staging', 'Waiting'],
+      },
+      series: [
+        {
+          text: 'Current',
+          values: [onlineCount, onboardCount, waitingCount],
+          backgroundColor: '#a6093d',
+          valueBox: {
+            placement: 'top',
+            rules: [
+              {
+                rule: '%offset-values == 0',
+                visible: false,
+              },
+            ],
+          },
+        },
+        {
+          text: 'Available (Soft limit)',
+          values: [onlineSoftLimit - onlineCount],
+          backgroundColor: '#00CC00',
+          valueBox: {
+            placement: 'top',
+            rules: [
+              {
+                rule: '%offset-values == 0',
+                visible: false,
+              },
+            ],
+          },
+        },
+        // {
+        //   text: 'Available (Soft limit)',
+        //   values: [onlineSoftLimit-onlineCount],
+        //   backgroundColor: '#00CC00',
+        //   valueBox: {
+        // 	placement: 'top',
+        // 	rules: [{
+        // 	  rule: '%offset-values == 0',
+        // 	  visible: false
+        // 	}]
+        //   }
+        // },
+        // {
+        //   text: 'Available (Hard limit)',
+        //   values: [onlineHardLimit-onlineSoftLimit],
+        //   backgroundColor: 'green',
+        //   valueBox: {
+        // 	placement: 'top',
+        // 	rules: [{
+        // 	  rule: '%offset-values == 0',
+        // 	  visible: false
+        // 	}]
+        //   }
+        // }
+      ],
+    };
+
+    zingchart.render({
+      id: 'myChart',
+      data: myConfig,
+      width: '100%',
+      height: '300px',
+    });
+  }
+
+  function createTable(tableData, fields) {
+    const currentTime = Math.floor(Date.now() / 1000);
+
+    var table = document.createElement('table');
+    var tableBody = document.createElement('tbody');
+
+    // Table header
+    var row = document.createElement('tr');
+    for (var i in fields) {
+      var cell = document.createElement('th');
+      $(cell).addClass('single-line');
+      cell.appendChild(document.createTextNode(fields[i]));
+      row.appendChild(cell);
+    }
+    tableBody.appendChild(row);
+
+    // Table body
+    tableData.forEach(function(rowData) {
+      var row = document.createElement('tr');
+
+      for (var i in fields) {
+        var cell = document.createElement('td');
+
+        var targetFieldName = fields[i];
+
+        // Special style
+        if (
+          [
+            'expire',
+            'duration',
+            'request_cfip',
+            'request_ip',
+          ].indexOf(targetFieldName) !== -1
+        ) {
+          $(cell).addClass('single-line');
+          $(cell).addClass('center');
+        }
+
+        // Customize cell data
+        if (targetFieldName == 'expire') {
+          rowData[targetFieldName] =
+            rowData[targetFieldName] - currentTime;
+          // Time format
+          if (rowData[targetFieldName] / 60 > 1) {
+            rowData[targetFieldName] =
+              Math.floor(rowData[targetFieldName] / 60) +
+              'm' +
+              (rowData[targetFieldName] % 60) +
+              's';
+          } else {
+            rowData[targetFieldName] += 's';
+          }
+        } else if (targetFieldName == 'duration') {
+          targetFieldName = 'created';
+          if (
+            rowData[targetFieldName] === undefined ||
+            rowData[targetFieldName] === null
+          ) {
+            rowData[targetFieldName] = '-';
+          } else {
+            rowData[targetFieldName] =
+              currentTime - rowData[targetFieldName];
+            // Time format
+            if (rowData[targetFieldName] / 60 > 1) {
+              rowData[targetFieldName] =
+                Math.floor(
+                  rowData[targetFieldName] / 60,
+                ) +
+                'm' +
+                (rowData[targetFieldName] % 60) +
+                's';
+            } else {
+              rowData[targetFieldName] += 's';
+            }
+          }
+        }
+
+        // Render
+        cell.appendChild(
+          document.createTextNode(rowData[targetFieldName]),
+        );
+        row.appendChild(cell);
+      }
+
+      tableBody.appendChild(row);
+    });
+
+    table.appendChild(tableBody);
+    return table;
+  }
+</script>
+
+<div id="tabs">
+  <ul>
+    <li><a href="#onlineList">Online</a></li>
+    <li><a href="#stagingList">Staging</a></li>
+    <li><a href="#waitingList">Waiting</a></li>
+  </ul>
+  <div id="onlineList"></div>
+  <div id="stagingList"></div>
+  <div id="waitingList"></div>
+</div>
+</body>
+</html>
