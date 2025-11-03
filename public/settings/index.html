@@ -260,6 +260,59 @@
                     </button>
                 </div>
             </div>
+            <div
+                id="login-modal"
+                class="bg-slate-800 bg-opacity-50 flex justify-center items-center absolute top-0 right-0 bottom-0 left-0 hidden"
+            >
+                <div class="bg-white px-16 py-14 rounded-md text-center">
+                    <h1 class="text-xl mb-4 font-bold text-slate-500">
+                        Login Required
+                    </h1>
+                    <div class="mb-4">
+                        <label
+                            class="block tracking-wide text-gray-700 text-xs font-bold mb-2 text-left"
+                            for="login-username"
+                        >
+                            Username
+                        </label>
+                        <input
+                            class="appearance-none block w-full text-gray-700 border border-gray-200 rounded py-3 px-4 leading-tight focus:outline-none focus:bg-white focus:border-gray-500"
+                            id="login-username"
+                            type="text"
+                            placeholder="Enter username"
+                        />
+                    </div>
+                    <div class="mb-4">
+                        <label
+                            class="block tracking-wide text-gray-700 text-xs font-bold mb-2 text-left"
+                            for="login-password"
+                        >
+                            Password
+                        </label>
+                        <input
+                            class="appearance-none block w-full text-gray-700 border border-gray-200 rounded py-3 px-4 leading-tight focus:outline-none focus:bg-white focus:border-gray-500"
+                            id="login-password"
+                            type="password"
+                            placeholder="Enter password"
+                        />
+                    </div>
+                    <div id="login-error" class="text-red-500 text-sm mb-4 hidden">
+                        Please enter both username and password
+                    </div>
+                    <button
+                        id="login-submit"
+                        class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 mx-4 my-4 border border-blue-700 rounded w-32"
+                    >
+                        Login
+                    </button>
+                    <button
+                        id="login-cancel"
+                        class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 mx-4 my-4 border border-red-700 rounded w-32"
+                    >
+                        Cancel
+                    </button>
+                </div>
+            </div>
         </div>
     </body>
 </html>
